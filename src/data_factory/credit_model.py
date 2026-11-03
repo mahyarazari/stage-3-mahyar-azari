@@ -121,7 +121,7 @@ def build_model(kind: str, seed: int, missing: str = "indicator",
     if kind == "logreg":
         classifier = LogisticRegression(max_iter=2000, C=1.0)
     else:
-        classifier = HistGradientBoostingClassifier(learning_rate=0.05, max_iter=300, max_leaf_nodes=31,
+        classifier = HistGradientBoostingClassifier(learning_rate=0.1, max_iter=150, max_leaf_nodes=31,
                                                     min_samples_leaf=100, l2_regularization=1.0,
                                                     early_stopping=False, random_state=seed)
     prepare = ColumnTransformer([
