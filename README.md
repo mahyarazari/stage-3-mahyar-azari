@@ -39,6 +39,17 @@ data-factory benchmark --label now --set snapshot # time the dashboard queries
 data-factory index-evidence                      # index plans, sizes, write cost
 ```
 
+## Stage-3 result (from `solution.ipynb`)
+
+| | cost per 1000 applicants |
+|---|---|
+| approve everyone | 802.1 (CV) |
+| one-column rule: reject if any past-due (baseline) | 419.9 (CV), 412.8 (test) |
+| HistGradientBoosting, threshold 0.0689 chosen on cost | 371.5 ± 10.6 (5-fold CV), **366.1 (held-out test, seen once)** |
+
+Costs: approving a defaulter 12, rejecting a good applicant 1. Accuracy is reported only to
+show why it misleads (approve everyone: 0.9332; chosen model: 0.8040).
+
 ## Project layout
 
 | Path | Content |
