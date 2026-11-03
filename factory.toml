@@ -133,6 +133,29 @@ before_load = ["sql/olist/10_tables.sql"]
 after_load = ["sql/olist/20_complete_parents.sql", "sql/olist/30_views_functions.sql",
               "sql/olist/40_snapshots.sql", "sql/olist/50_indexes.sql", "sql/olist/60_refresh_snapshots.sql"]
 
+[credit]
+# Stage 3: Kaggle competition "Give Me Some Credit", file cs-training.csv. A competition
+# download needs a login and accepting its rules, so the factory does not download it (D60):
+# the file is placed in data/raw/credit/ by hand and checked byte for byte against this sha256.
+missing_tokens = ["NA"]
+
+[credit.files]
+"cs-training.csv" = "1bd46da486a5708c58c7b01a034fae2a13b327f6f7b62ea7ba4fe3b5824b24ac"
+
+[credit.load]
+schema = "credit"
+before_load = ["sql/credit/10_tables.sql"]
+after_load = ["sql/credit/20_views.sql"]
+
+[credit.model]
+seed = 42
+test_share = 0.2           # D61: set aside once at the start, looked at only at the end
+cv_folds = 5               # D61: stratified folds on the other 80%
+cost_fn = 12               # approved, then defaults: the whole amount is lost
+cost_fp = 1                # rejected, would have repaid: one loan's profit is lost
+alt_cost_fn = 4            # sensitivity check: the same matrix with 4 to 1
+model_file = "data/curated/credit/model.joblib"
+
 [dashboard]
 # The five product-team queries (sql/queries/) are measured with these parameters.
 # Whole history = the heaviest case the dashboard can ask for.
