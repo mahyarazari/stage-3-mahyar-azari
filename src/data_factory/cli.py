@@ -19,7 +19,7 @@ from pathlib import Path
 
 from sqlalchemy import text
 
-from data_factory import benchmark, olist_pipeline, pipeline
+from data_factory import benchmark, credit_pipeline, olist_pipeline, pipeline
 from data_factory.config import load_config
 from data_factory.db import database, ensure_database, safe_url, server_version
 from data_factory.exceptions import ExitCode, FactoryError
@@ -30,11 +30,12 @@ DEFAULT_CONFIG = Path("factory.toml")
 LOG_FORMAT = "%(asctime)s %(levelname)-7s %(name)s: %(message)s"
 
 
-DATASETS = ("nyc311", "olist")
+DATASETS = ("nyc311", "olist", "credit")
+PIPELINES = {"olist": olist_pipeline, "credit": credit_pipeline}
 
 
 def _stage_order(dataset: str) -> tuple[str, ...]:
-    return pipeline.STAGE_NAMES if dataset == "nyc311" else olist_pipeline.STAGE_NAMES
+    return pipeline.STAGE_NAMES if dataset == "nyc311" else PIPELINES[dataset].STAGE_NAMES
 
 
 def _stage_list(text: str) -> list[str]:
@@ -57,7 +58,7 @@ def _run_dataset(dataset: str, config, args) -> None:
     if dataset == "nyc311":
         pipeline.run(pipeline.RunContext(config=config, since_last_run=args.since_last_run), stages)
     else:
-        olist_pipeline.run(pipeline.RunContext(config=config), stages)
+        PIPELINES[dataset].run(pipeline.RunContext(config=config), stages)
 
 
 def _benchmark(config, label: str, query_set: str = "baseline") -> None:
@@ -105,10 +106,10 @@ def build_parser() -> argparse.ArgumentParser:
 
     run = commands.add_parser("run", help="run the factory (all stages by default)")
     run.add_argument("--dataset", choices=("all",) + DATASETS, default="all",
-                     help="which dataset to build (default: all, nyc311 then olist)")
+                     help="which dataset to build (default: all, nyc311, olist, then credit)")
     run.add_argument("--stages", type=_stage_list, default=None,
                      help=f"comma-separated subset; nyc311: {','.join(pipeline.STAGE_NAMES)}; "
-                          f"olist: {','.join(olist_pipeline.STAGE_NAMES)}")
+                          f"olist and credit: {','.join(olist_pipeline.STAGE_NAMES)}")
     run.add_argument("--since-last-run", action="store_true",
                      help="fetch only records created after the previous run")
 

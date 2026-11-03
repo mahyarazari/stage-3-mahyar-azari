@@ -105,6 +105,25 @@ class OlistConfig:
 
 
 @dataclass(frozen=True)
+class ModelConfig:
+    seed: int                    # the one seed of the stage-3 notebook and of the model
+    test_share: float            # share of applicants set aside once, at the start (D61)
+    cv_folds: int                # stratified folds on the rest (D61)
+    cost_fn: float               # cost of approving an applicant who then defaults
+    cost_fp: float               # cost of rejecting an applicant who would have repaid
+    alt_cost_fn: float           # the second cost ratio of the sensitivity check
+    model_file: Path             # trained pipeline + threshold (joblib)
+
+
+@dataclass(frozen=True)
+class CreditConfig:
+    files: dict[str, str]        # file name -> pinned sha256 (Kaggle download, D60)
+    missing_tokens: tuple[str, ...]
+    load: LoadConfig
+    model: ModelConfig
+
+
+@dataclass(frozen=True)
 class DashboardConfig:
     start: pd.Timestamp       # period the dashboard queries are measured on
     end: pd.Timestamp         # (end exclusive)
@@ -130,6 +149,7 @@ class Config:
     database: DatabaseConfig
     load: LoadConfig
     olist: OlistConfig
+    credit: CreditConfig
     dashboard: DashboardConfig
 
 
@@ -304,7 +324,7 @@ def _read_database(data: dict[str, Any]) -> DatabaseConfig:
 
 
 def _read_load(data: dict[str, Any], base: Path, name: str = "load") -> LoadConfig:
-    section = data.get(name) if name == "load" else _section(data, "olist").get("load")
+    section = data.get(name) if name == "load" else _section(data, name.split(".")[0]).get("load")
     if not isinstance(section, dict):
         raise ConfigError(f"missing section [{name}]")
     schema = _get(section, name, "schema", str)
@@ -333,6 +353,34 @@ def _read_olist(data: dict[str, Any], base: Path) -> OlistConfig:
     return OlistConfig(base_url=_get(section, "olist", "base_url", str).rstrip("/"), files=dict(files),
                        latitude_range=_range(section, "latitude_range", "olist"),
                        longitude_range=_range(section, "longitude_range", "olist"), load=load)
+
+
+def _read_credit(data: dict[str, Any], base: Path) -> CreditConfig:
+    section = _section(data, "credit")
+    files = _get(section, "credit", "files", dict)
+    for name, digest in files.items():
+        if not (name.endswith(".csv") and isinstance(digest, str) and SHA256_PATTERN.fullmatch(digest)):
+            raise ConfigError(f"[credit.files] '{name}' must be a .csv name with a 64-character sha256")
+    load = _read_load(data, base, name="credit.load")
+    model = section.get("model")
+    if not isinstance(model, dict):
+        raise ConfigError("missing section [credit.model]")
+    where = "credit.model"
+    test_share = float(_get(model, where, "test_share", float))
+    if not 0 < test_share < 1:
+        raise ConfigError(f"[{where}] test_share must be between 0 and 1, got {test_share}")
+    folds = int(_get(model, where, "cv_folds", int))
+    if folds < 2:
+        raise ConfigError(f"[{where}] cv_folds must be at least 2, got {folds}")
+    model_file = Path(_get(model, where, "model_file", str))
+    return CreditConfig(
+        files=dict(files), missing_tokens=_text_list(section, "credit", "missing_tokens"), load=load,
+        model=ModelConfig(
+            seed=int(_get(model, where, "seed", int)), test_share=test_share, cv_folds=folds,
+            cost_fn=float(_positive(_get(model, where, "cost_fn", (int, float)), f"[{where}] cost_fn")),
+            cost_fp=float(_positive(_get(model, where, "cost_fp", (int, float)), f"[{where}] cost_fp")),
+            alt_cost_fn=float(_positive(_get(model, where, "alt_cost_fn", (int, float)), f"[{where}] alt_cost_fn")),
+            model_file=model_file if model_file.is_absolute() else (base / model_file).resolve()))
 
 
 def _read_dashboard(data: dict[str, Any]) -> DashboardConfig:
@@ -381,5 +429,6 @@ def load_config(path: str | Path) -> Config:
         database=_read_database(data),
         load=_read_load(data, base=path.parent),
         olist=_read_olist(data, base=path.parent),
+        credit=_read_credit(data, base=path.parent),
         dashboard=_read_dashboard(data),
     )

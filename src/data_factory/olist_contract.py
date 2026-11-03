@@ -28,6 +28,7 @@ class Kind(str, Enum):
     TEXT = "text"
     COUNT = "count"          # whole number >= 0
     MONEY = "money"          # >= 0 with at most two decimals
+    DECIMAL = "decimal"      # >= 0, any precision, scientific notation allowed (7.96E-05)
     TIMESTAMP = "timestamp"  # YYYY-MM-DD HH:MM:SS
     DATE = "date"            # a timestamp at 00:00:00, stored as its date
     ZIP = "zip"              # 5-digit zip-code prefix; leading zeros matter, so text
@@ -96,6 +97,7 @@ class TableSpec:
     key: tuple[str, ...] = ()        # target columns that make a row unique (none: no key)
     foreign_keys: tuple[ForeignKey, ...] = ()
     rules: tuple[NotBefore, ...] = ()
+    missing_tokens: tuple[str, ...] = ()   # source texts that mean "no value" (for example NA)
 
     @property
     def targets(self) -> list[str]:

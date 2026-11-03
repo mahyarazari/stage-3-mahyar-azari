@@ -41,6 +41,7 @@ PATTERNS = {
     Kind.ID: r"[0-9a-f]{32}",
     Kind.COUNT: r"[0-9]+",
     Kind.MONEY: r"[0-9]+(\.[0-9]{1,2})?",
+    Kind.DECIMAL: r"[0-9]+(\.[0-9]+)?([eE][-+]?[0-9]+)?",
     Kind.ZIP: r"[0-9]{5}",
     Kind.TIMESTAMP: r"[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}",
     Kind.DATE: r"[0-9]{4}-[0-9]{2}-[0-9]{2} 00:00:00",
@@ -103,7 +104,8 @@ class _TableResult:
 
 
 def validate_tables(tables: tuple[TableSpec, ...], raw_dir: Path, work_dir: Path, quarantine_dir: Path,
-                    chunk_rows: int, max_ratio: float, bounds: dict[str, tuple[float, float]]) -> dict:
+                    chunk_rows: int, max_ratio: float, bounds: dict[str, tuple[float, float]],
+                    dataset: str = "olist") -> dict:
     for spec in tables:
         if not (raw_dir / spec.file).exists():
             raise MissingInputError(f"{raw_dir / spec.file} not found: run the fetch stage first")
@@ -133,7 +135,7 @@ def validate_tables(tables: tuple[TableSpec, ...], raw_dir: Path, work_dir: Path
         bad_out.commit()                                           # evidence kept in every case
         if ratio > max_ratio:
             raise QuarantineThresholdError(
-                f"{100 * ratio:.4f}% of Olist records were quarantined, above the limit of "
+                f"{100 * ratio:.4f}% of {dataset} records were quarantined, above the limit of "
                 f"{100 * max_ratio:.4f}%; see {quarantine_dir / QUARANTINE_FILE}")
         for writer in good_out.values():
             writer.commit()
@@ -141,7 +143,7 @@ def validate_tables(tables: tuple[TableSpec, ...], raw_dir: Path, work_dir: Path
     work_dir.mkdir(parents=True, exist_ok=True)
     (work_dir / STATS_FILE).write_text(json.dumps(stats, indent=2, sort_keys=True) + "\n",
                                        encoding="utf-8", newline="\n")
-    log.info("validate olist: %d raw, %d accepted, %d quarantined", raw, raw - quarantined, quarantined)
+    log.info("validate %s: %d raw, %d accepted, %d quarantined", dataset, raw, raw - quarantined, quarantined)
     return stats
 
 
@@ -164,7 +166,8 @@ def _validate_table(spec: TableSpec, path: Path, chunk_rows: int, bounds, parent
 
         out = pd.DataFrame(index=raw.index)
         for column in spec.columns:
-            text = raw[column.source].str.strip().mask(lambda s: s == "")
+            text = raw[column.source].str.strip()
+            text = text.mask((text == "") | text.isin(spec.missing_tokens))
             value, bad = check_value(text, column, bounds)
             out[column.target] = value
             flags[Reason.INVALID_VALUE] |= bad

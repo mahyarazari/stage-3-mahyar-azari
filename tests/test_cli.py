@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from data_factory import olist_pipeline, pipeline
+from data_factory import credit_pipeline, olist_pipeline, pipeline
 from data_factory.cli import main
 from data_factory.exceptions import (
     ExitCode,
@@ -33,7 +33,8 @@ def fake_stages(**behaviour):
 
     nyc311 = {name: make(name) for name in pipeline.STAGE_NAMES}
     olist = {name: make(f"olist:{name}") for name in olist_pipeline.STAGE_NAMES}
-    return nyc311, olist, calls
+    credit = {name: make(f"credit:{name}") for name in credit_pipeline.STAGE_NAMES}
+    return nyc311, olist, credit, calls
 
 
 class CliTests(unittest.TestCase):
@@ -44,10 +45,12 @@ class CliTests(unittest.TestCase):
         logging.disable(logging.NOTSET)
 
     def run_cli(self, *args, **behaviour):
-        stages, olist_stages, calls = fake_stages(**behaviour)
+        stages, olist_stages, credit_stages, calls = fake_stages(**behaviour)
         with mock.patch.dict(pipeline.STAGES, stages), \
              mock.patch.dict(olist_pipeline.STAGES, olist_stages), \
              mock.patch.object(olist_pipeline, "record_run"), \
+             mock.patch.dict(credit_pipeline.STAGES, credit_stages), \
+             mock.patch.object(credit_pipeline, "record_run"), \
              mock.patch("data_factory.cli.ensure_database"), \
              mock.patch.object(pipeline, "record_run") as self.record_run:
             code = main(["--config", PROJECT_CONFIG, *args])
@@ -57,7 +60,8 @@ class CliTests(unittest.TestCase):
         code, calls = self.run_cli("run")
         self.assertEqual(code, ExitCode.OK)
         self.assertEqual(calls, list(pipeline.STAGE_NAMES)
-                         + [f"olist:{name}" for name in olist_pipeline.STAGE_NAMES])
+                         + [f"olist:{name}" for name in olist_pipeline.STAGE_NAMES]
+                         + [f"credit:{name}" for name in credit_pipeline.STAGE_NAMES])
 
     def test_dataset_option_runs_only_that_dataset(self):
         code, calls = self.run_cli("run", "--dataset", "olist", "--stages", "load,fetch")
