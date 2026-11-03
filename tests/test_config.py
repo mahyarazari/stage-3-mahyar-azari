@@ -96,6 +96,11 @@ class InvalidConfigTests(ConfigFileMixin, unittest.TestCase):
     def test_quarantine_ratio_must_be_a_share(self):
         self.assert_config_error(self.original.replace("max_ratio = 0.01", "max_ratio = 5"), "max_ratio")
 
+    def test_credit_model_settings_are_checked(self):
+        self.assert_config_error(self.original.replace("test_share = 0.2 ", "test_share = 1.5 "), "test_share")
+        self.assert_config_error(self.original.replace("cv_folds = 5 ", "cv_folds = 1 "), "cv_folds")
+        self.assert_config_error(self.original.replace("cost_fn = 12 ", "cost_fn = 0 "), "cost_fn")
+
     def test_unknown_aggregate_level(self):
         self.assert_config_error(self.original.replace('levels = ["borough", "modzcta"]',
                                                        'levels = ["borough", "planet"]'), "planet")
