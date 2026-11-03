@@ -1,7 +1,8 @@
-# Data Factory — Stage 2 (PostgreSQL)
+# Data Factory — Stage 3 (Machine learning)
 
-Stage 1 built a resumable, deterministic factory for NYC 311 data. Stage 2 adds PostgreSQL
-as a new destination and the Olist e-commerce data as a new source, through the same package.
+Stage 1 built a resumable, deterministic factory for NYC 311 data. Stage 2 added PostgreSQL
+and the Olist data. Stage 3 adds a file source (Kaggle "Give Me Some Credit") through the same
+package and database, and a default model whose decision threshold minimises a 12:1 cost.
 
 ## Run it
 
@@ -19,13 +20,17 @@ set PGPORT=5432                             # only if the server is not on 5432
 # or replace the whole URL: set DATABASE_URL=postgresql+psycopg://user@host:port/dbname
 
 data-factory check-db                       # connection test
+# Stage 3 input: download cs-training.csv from
+# https://www.kaggle.com/competitions/GiveMeSomeCredit/data (accept the rules) into data/raw/credit/
 data-factory run                            # one command: empty server -> full database
+jupyter nbconvert --to notebook --execute --inplace solution.ipynb   # stage-3 notebook (~5 min)
+data-factory predict --input new.csv --output scores.csv            # score a new file (same schema)
 python -m unittest discover -s tests -t .   # tests (database tests are skipped without a server)
 ```
 
 `data-factory run` creates the database `dba_stage2` if it does not exist, then builds both
-datasets: **nyc311** (fetch → validate → clean → enrich → publish → load) and **olist**
-(fetch → validate → load). Each load runs in one transaction: all or nothing, safe to repeat.
+datasets: **nyc311** (fetch → validate → clean → enrich → publish → load), **olist** and
+**credit** (fetch → validate → load; for credit, fetch checks the pinned sha256 of the local file). Each load runs in one transaction: all or nothing, safe to repeat.
 
 ```bash
 data-factory run --dataset olist                 # one dataset
@@ -40,10 +45,10 @@ data-factory index-evidence                      # index plans, sizes, write cos
 |---|---|
 | `factory.toml` | every setting (sources, pinned checksums, schemas, SQL files) |
 | `src/data_factory/` | the package: sources, contracts, validation, sinks, pipelines, CLI |
-| `sql/nyc311/`, `sql/olist/` | all DDL, run by the load stage |
+| `sql/nyc311/`, `sql/olist/`, `sql/credit/` | all DDL (and the view `credit.model_input`), run by the load stage |
 | `data/` | raw downloads, intermediate and published files (not in Git) |
-| `solution.ipynb`, `report.md` | stage-2 notebook (run after `data-factory run`) and report |
-| `docs/stage1/` | stage-1 notebook and report |
+| `solution.ipynb`, `report.md` | stage-3 notebook (run after `data-factory run`) and report |
+| `docs/stage1/`, `docs/stage2/` | earlier notebooks and reports |
 | `docs/decisions.md` | every decision with its evidence |
 
 ## Exit codes
