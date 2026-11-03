@@ -88,7 +88,7 @@ def summarise(cases: pd.DataFrame, level: str, population: dict[str, float], mon
     long = pd.DataFrame({"cases": grouped.size(),
                          "median_days": grouped["duration"].agg(_median_with_open)})
     people = long.index.get_level_values(level).map(population)
-    long["rate"] = long["cases"] / pd.Series(people, index=long.index) * settings.rate_per
+    long["rate"] = long["cases"] / pd.Series(people, index=long.index, dtype="float64") * settings.rate_per
 
     small = long["cases"] < settings.min_cases_per_cell
     unknown = long["median_days"].isna() & ~small
