@@ -90,33 +90,37 @@ def age_band(age: pd.Series) -> pd.Series:
     return pd.cut(age, AGE_BANDS, labels=AGE_LABELS, right=False).astype("string").fillna("unknown")
 
 
-def leaky_age_band_rate(frame: pd.DataFrame) -> pd.Series:
-    """AUDIT ONLY, never in the model: the default rate of the applicant's age band computed
-    on ALL rows, labels of evaluation rows included. It is here to measure how much a feature
-    that has seen the answers inflates the validation numbers (leakage audit, D68)."""
-    band = age_band(frame["age"])
-    return band.map(frame.groupby(band)[TARGET].mean()).astype("float64")
+def group_default_rate(fit_part: pd.DataFrame, apply_to: pd.DataFrame, column: str) -> pd.Series:
+    """AUDIT ONLY, never in the final model: the default rate of the applicants who share the
+    same exact value of `column` (for example the same monthly income), learnt on `fit_part`.
+    Learnt on all rows (labels of evaluation rows included) it is a leak: an applicant's own
+    outcome is inside its feature. Learnt on the training part only it is honest (D68)."""
+    rates = fit_part.groupby(column)[TARGET].mean()
+    return apply_to[column].map(rates).astype("float64")
 
 
 # ---------------------------------------------------------------- model
 def build_model(kind: str, seed: int, missing: str = "indicator",
-                drop: tuple[str, ...] = (), extra: tuple[str, ...] = ()) -> Pipeline:
+                drop: tuple[str, ...] = (), extra: tuple[str, ...] = (), scale: bool | None = None) -> Pipeline:
     """features -> preparation -> classifier, as one Pipeline (fitted on training rows only).
 
     logreg  a linear model on weighted sums of the inputs: it needs scaled inputs (the
             penalty and the solver treat all coefficients alike) and a log of the long-tailed
             amounts, so a few huge incomes do not dominate (D69).
     hgb     trees split on thresholds, so any monotone rescaling changes nothing: no scaling.
+    `scale` overrides that default, only to measure the claim (D69).
     """
     if kind not in MODEL_KINDS or missing not in MISSING_POLICIES:
         raise ValueError(f"unknown model {kind!r} or missing-value policy {missing!r}")
     numeric = [c for c in BASE_NUMERIC + NEW_FEATURES if c not in drop] + list(extra)
     imputer = SimpleImputer(strategy="median", add_indicator=(missing == "indicator"))
+    scale = (kind == "logreg") if scale is None else scale
+    steps = [("impute", imputer)]
+    if scale:
+        steps += [("log", FunctionTransformer(_signed_log1p)), ("scale", StandardScaler())]
     if kind == "logreg":
-        steps = [("impute", imputer), ("log", FunctionTransformer(_signed_log1p)), ("scale", StandardScaler())]
         classifier = LogisticRegression(max_iter=2000, C=1.0)
     else:
-        steps = [("impute", imputer)]
         classifier = HistGradientBoostingClassifier(learning_rate=0.05, max_iter=300, max_leaf_nodes=31,
                                                     min_samples_leaf=100, l2_regularization=1.0,
                                                     early_stopping=False, random_state=seed)
@@ -237,3 +241,15 @@ def predict_frame(saved: dict, frame: pd.DataFrame) -> pd.DataFrame:
     proba = saved["pipeline"].predict_proba(frame)[:, 1]
     return pd.DataFrame({"applicant_id": frame["applicant_id"].to_numpy(), "probability": proba,
                          "decision": np.where(proba >= saved["threshold"], "reject", "approve")})
+
+
+def cv_summary(name: str, result: CvResult, y_true, cost_fn: float, cost_fp: float) -> dict:
+    """One comparison row: the threshold chosen on all out-of-fold predictions, the cost of
+    each fold at that threshold (mean and spread), and the ranking metrics per fold."""
+    threshold, _ = best_threshold(y_true, result.oof, cost_fn, cost_fp)
+    fold_costs = costs_at(y_true, result.oof, result.fold_of_row, threshold, cost_fn, cost_fp)
+    return {"model": name, "threshold": threshold,
+            "cost_per_1000_mean": fold_costs.mean(), "cost_per_1000_std": fold_costs.std(ddof=1),
+            "cost_per_1000_min": fold_costs.min(), "cost_per_1000_max": fold_costs.max(),
+            "roc_auc_mean": result.folds["roc_auc"].mean(), "roc_auc_std": result.folds["roc_auc"].std(ddof=1),
+            "pr_auc_mean": result.folds["pr_auc"].mean()}
