@@ -120,6 +120,9 @@ def build_parser() -> argparse.ArgumentParser:
     bench.add_argument("--set", dest="query_set", choices=tuple(benchmark.QUERY_SETS), default="baseline",
                        help="which versions of the queries to time (default: baseline)")
     commands.add_parser("index-evidence", help="plans, sizes and write cost of the indexes (rolled back)")
+    predict = commands.add_parser("predict", help="score a new credit file with the saved model")
+    predict.add_argument("--input", type=Path, required=True, help="CSV with the schema of cs-training.csv")
+    predict.add_argument("--output", type=Path, required=True, help="CSV of probabilities and decisions")
     return parser
 
 
@@ -136,6 +139,12 @@ def main(argv: list[str] | None = None) -> int:
             return ExitCode.OK
         if args.command == "benchmark":
             _benchmark(config, args.label, args.query_set)
+            return ExitCode.OK
+        if args.command == "predict":
+            from data_factory.credit_predict import predict_file
+            result = predict_file(config, args.input, args.output)
+            log.info("predict: %d applicants scored, %d rejected -> %s", len(result),
+                     int((result["decision"] == "reject").sum()), args.output)
             return ExitCode.OK
         if args.command == "check-db":
             with database(config.database) as engine:
